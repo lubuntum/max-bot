@@ -1,0 +1,8 @@
+pandas
+openpyxl
+python-calamine
+requests
+yadisk
+maxapi
+python-dotenv
+xlrd>=2.0.1

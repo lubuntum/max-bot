@@ -1,0 +1,71 @@
+# ========== Python ==========
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+pythonenv*
+
+# ========== Файлы базы данных ==========
+*.db
+*.sqlite
+*.sqlite3
+users.db
+schedule_temp.xlsx
+schedule_temp.csv
+
+# ========== Файлы окружения и секреты ==========
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+
+# ========== IDE и редакторы ==========
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# ========== Временные файлы ==========
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ========== Зависимости и сборка ==========
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+pip-wheel-metadata/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ========== Jupyter Notebook ==========
+.ipynb_checkpoints/
+*.ipynb
+
+# ========== Максимум порядка ==========
+# Исключаем всё, что может содержать чувствительные данные
+*.log
+*.pid
+*.pid.lock
