@@ -2,7 +2,10 @@ import sqlite3
 import datetime
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "users.db"
+from config import DB_PATH
+
+
+#DB_PATH = Path(__file__).parent / "users.db"
 
 
 def get_connection():

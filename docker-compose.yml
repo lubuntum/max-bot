@@ -8,7 +8,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./users.db:/app/users.db
+      - ./data:/app/data
     networks:
       - bot-network
 

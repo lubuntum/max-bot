@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Загружаем переменные из .env
@@ -14,6 +16,8 @@ YANDEX_SHARE_URL = os.getenv("YANDEX_SHARE_URL")
 
 # Время жизни кэша в секундах (по умолчанию 5 минут)
 CACHE_TTL = int(os.getenv("CACHE_TTL", 300))
+
+DB_PATH = Path(os.getenv("DB_PATH", "/app/data/users.db"))
 
 # Проверяем, что все переменные загружены
 if not MAX_TOKEN:
