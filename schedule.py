@@ -84,6 +84,23 @@ class Schedule:
             return {}
 
         # какие классы есть в файле — определяем по заголовкам колонок
+        # ============================================
+        # STEP 2: FIND ALL CLASSES AND THEIR COLUMNS
+        # ============================================
+        #
+        # Data Structure: classes = {
+        #     "1А": {
+        #         "время": "1А - время",  # ← column name in spreadsheet
+        #         "урок": "1А - урок"     # ← column name in spreadsheet
+        #     },
+        #     "2Б": {
+        #         "время": "2Б - время",
+        #         "урок": "2Б - урок"
+        #     }
+        # }
+        #
+        # This maps: class_name → {field_type: column_name}
+        #
         classes = {}
         for col in df.columns:
             match = _HEADER_RE.match(str(col).strip())
@@ -92,7 +109,18 @@ class Schedule:
             class_name = match.group('class').strip().upper()
             field = match.group('field').lower()
             classes.setdefault(class_name, {})[field] = col
-
+        # ============================================
+        # STEP 3: SETUP FOR PROCESSING ROWS
+        # ============================================
+        #
+        # Data Structure: result = {
+        #     ("ПН", "1А"): [Lesson(...), Lesson(...)],  # Monday, Class 1A
+        #     ("ПН", "2Б"): [Lesson(...), Lesson(...)],  # Monday, Class 2B
+        #     ("ВТ", "1А"): [Lesson(...)],               # Tuesday, Class 1A
+        # }
+        #
+        # Key: (day, class_name) → Value: list of Lesson objects
+        # List index = lesson number (0 = 1st lesson, 1 = 2nd lesson, etc.)
         result = {}
         day_counters = {}
 
