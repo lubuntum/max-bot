@@ -1,18 +1,17 @@
-version: '3.8'
-
 services:
   bot:
-    # Development specific settings
-    environment:
-      - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=DEBUG
-
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: max-schedule-bot
+    restart: unless-stopped
+    env_file:
+      - .env
     volumes:
-      # Mount entire project for hot reload during development
-      - .:/app
-      # Exclude the mounted database from being overwritten
-      - /app/users.db
+      - ./users.db:/app/users.db
+    networks:
+      - bot-network
 
-    # For debugging
-    stdin_open: true
-    tty: true
+networks:
+  bot-network:
+    driver: bridge
