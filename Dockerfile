@@ -1,25 +1,33 @@
-version: '3.8'
+# Use official Python runtime as base image
+FROM python:3.10-slim
 
-services:
-  bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: max-schedule-bot
-    restart: unless-stopped
+# Set working directory inside container
+WORKDIR /app
 
-    # Environment variables from .env file
-    env_file:
-      - .env
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8
 
-    # Mount only the SQLite database file
-    volumes:
-      - ./users.db:/app/users.db  # Persist the SQLite database
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-    # Network configuration
-    networks:
-      - bot-network
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-networks:
-  bot-network:
-    driver: bridge
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application
+COPY . .
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Default command
+CMD ["python", "bot.py"]
