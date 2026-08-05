@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  bot:
+    # Development specific settings
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=DEBUG
+
+    volumes:
+      # Mount entire project for hot reload during development
+      - .:/app
+      # Exclude the mounted database from being overwritten
+      - /app/users.db
+
+    # For debugging
+    stdin_open: true
+    tty: true
