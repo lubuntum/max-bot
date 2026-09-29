@@ -25,8 +25,12 @@ _DAY_ALIASES = {
     'ВОСКРЕСЕНЬЕ': 'ВС', 'ВС': 'ВС',
 }
 
-# Заголовок колонки вида "1А - время" / "1А - урок"
-_HEADER_RE = re.compile(r'^(?P<class>.+?)\s*-\s*(?P<field>время|урок)$', re.IGNORECASE)
+# Заголовок колонки вида "1А - время" / "1А - урок" / "1А - кабинет"
+_HEADER_RE = re.compile(
+    r'^(?P<class>.+?)\s*-\s*(?P<field>время|урок|кабинет)$',
+    re.IGNORECASE,
+)
+_REQUIRED_CLASS_FIELDS = {'время', 'урок', 'кабинет'}
 
 
 def _normalize_day(day) -> str:
@@ -34,10 +38,28 @@ def _normalize_day(day) -> str:
     return _DAY_ALIASES.get(day, day)
 
 
+def _cell_text(value) -> Optional[str]:
+    """Приводит ячейку Excel к тексту без ".0" у целых чисел."""
+    if pd.isna(value):
+        return None
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip() or None
+
+
+def _class_sort_key(class_name: str):
+    """Сортирует классы по параллели: 1А, 1Б, ..., 10А, 11А."""
+    match = re.match(r'^(\d+)(.*)$', class_name)
+    if not match:
+        return 1, 0, class_name
+    return 0, int(match.group(1)), match.group(2)
+
+
 @dataclass
 class Lesson:
     time: Optional[str]
     subject: Optional[str]
+    room: Optional[str] = None
 
 
 class Schedule:
@@ -47,31 +69,60 @@ class Schedule:
     повторного парсинга.
     """
 
-    def __init__(self):
+    def __init__(self, classes=None):
         # {день: {класс: [Lesson, Lesson, ...]}}
         self._data = {}
+        self._classes = sorted(classes or [], key=_class_sort_key)
 
     def get_day(self, day: str, class_name: str) -> list:
         day = _normalize_day(day)
         class_name = str(class_name).strip().upper()
         return self._data.get(day, {}).get(class_name, [])
 
+    def get_classes(self) -> list:
+        """Возвращает классы, у которых есть все три колонки расписания."""
+        return list(self._classes)
+
     @classmethod
     def from_sheets(cls, df_base, df_changed):
-        base = cls._parse_sheet(df_base)
-        changed = cls._parse_sheet(df_changed)
+        base_classes = cls._find_class_columns(df_base)
+        changed_classes = cls._find_class_columns(df_changed)
+
+        base = cls._parse_sheet(df_base, base_classes)
+        changed = cls._parse_sheet(df_changed, changed_classes)
         merged = cls._merge(base, changed)
 
-        schedule = cls()
+        schedule = cls(set(base_classes) | set(changed_classes))
         for (day, class_name), lessons in merged.items():
             schedule._data.setdefault(day, {})[class_name] = lessons
         return schedule
 
     @staticmethod
-    def _parse_sheet(df):
+    def _find_class_columns(df):
+        """Находит классы с полным набором колонок: время, урок и кабинет."""
+        if df is None:
+            return {}
+
+        classes = {}
+        for col in df.columns:
+            match = _HEADER_RE.match(str(col).strip())
+            if not match:
+                continue
+            class_name = match.group('class').strip().upper()
+            field = match.group('field').lower()
+            classes.setdefault(class_name, {})[field] = col
+
+        return {
+            class_name: columns
+            for class_name, columns in classes.items()
+            if _REQUIRED_CLASS_FIELDS.issubset(columns)
+        }
+
+    @staticmethod
+    def _parse_sheet(df, classes=None):
         """
         Превращает "широкую" таблицу с колонками вида
-        "<класс> - время" / "<класс> - урок" в
+        "<класс> - время" / "<класс> - урок" / "<класс> - кабинет" в
         {(день, класс): [Lesson по порядку уроков]}.
         Номер урока — порядковый номер строки с этим днём
         (в порядке, в котором строки идут в файле).
@@ -83,44 +134,7 @@ class Schedule:
             print("⚠️ В листе нет колонки 'День', пропускаю его.")
             return {}
 
-        # какие классы есть в файле — определяем по заголовкам колонок
-        # ============================================
-        # STEP 2: FIND ALL CLASSES AND THEIR COLUMNS
-        # ============================================
-        #
-        # Data Structure: classes = {
-        #     "1А": {
-        #         "время": "1А - время",  # ← column name in spreadsheet
-        #         "урок": "1А - урок"     # ← column name in spreadsheet
-        #     },
-        #     "2Б": {
-        #         "время": "2Б - время",
-        #         "урок": "2Б - урок"
-        #     }
-        # }
-        #
-        # This maps: class_name → {field_type: column_name}
-        #
-        classes = {}
-        for col in df.columns:
-            match = _HEADER_RE.match(str(col).strip())
-            if not match:
-                continue
-            class_name = match.group('class').strip().upper()
-            field = match.group('field').lower()
-            classes.setdefault(class_name, {})[field] = col
-        # ============================================
-        # STEP 3: SETUP FOR PROCESSING ROWS
-        # ============================================
-        #
-        # Data Structure: result = {
-        #     ("ПН", "1А"): [Lesson(...), Lesson(...)],  # Monday, Class 1A
-        #     ("ПН", "2Б"): [Lesson(...), Lesson(...)],  # Monday, Class 2B
-        #     ("ВТ", "1А"): [Lesson(...)],               # Tuesday, Class 1A
-        # }
-        #
-        # Key: (day, class_name) → Value: list of Lesson objects
-        # List index = lesson number (0 = 1st lesson, 1 = 2nd lesson, etc.)
+        classes = classes if classes is not None else Schedule._find_class_columns(df)
         result = {}
         day_counters = {}
 
@@ -135,22 +149,28 @@ class Schedule:
             for class_name, cols in classes.items():
                 time_val = row.get(cols.get('время'))
                 subj_val = row.get(cols.get('урок'))
+                room_val = row.get(cols.get('кабинет'))
 
-                time_val = None if pd.isna(time_val) else str(time_val).strip()
-                subj_val = None if pd.isna(subj_val) else str(subj_val).strip()
+                time_val = _cell_text(time_val)
+                subj_val = _cell_text(subj_val)
+                room_val = _cell_text(room_val)
 
                 lessons = result.setdefault((day, class_name), [])
                 while len(lessons) < period_index:
-                    lessons.append(Lesson(time=None, subject=None))
-                lessons[period_index - 1] = Lesson(time=time_val, subject=subj_val)
+                    lessons.append(Lesson(time=None, subject=None, room=None))
+                lessons[period_index - 1] = Lesson(
+                    time=time_val,
+                    subject=subj_val,
+                    room=room_val,
+                )
 
         return result
 
     @staticmethod
     def _merge(base_rows, changed_rows):
         """
-        Время и урок берутся из "Измененное", а где там пусто —
-        подставляются из "Основное" (время и урок проверяются
+        Время, урок и кабинет берутся из "Измененное", а где там пусто —
+        подставляются из "Основное" (все три поля проверяются
         независимо, по одному и тому же номеру урока). Если в
         "Измененное" такого дня/класса нет вообще — используется
         "Основное" целиком. "-" в ячейке — это явное "нет урока",
@@ -164,12 +184,13 @@ class Schedule:
 
             combined = []
             for i in range(length):
-                base = base_lessons[i] if i < len(base_lessons) else Lesson(None, None)
-                changed = changed_lessons[i] if i < len(changed_lessons) else Lesson(None, None)
+                base = base_lessons[i] if i < len(base_lessons) else Lesson(None, None, None)
+                changed = changed_lessons[i] if i < len(changed_lessons) else Lesson(None, None, None)
 
                 combined.append(Lesson(
                     time=changed.time if changed.time else base.time,
                     subject=changed.subject if changed.subject else base.subject,
+                    room=changed.room if changed.room else base.room,
                 ))
 
             merged[key] = combined
@@ -297,6 +318,7 @@ def get_schedule_for_day(schedule, day_ru, class_name):
     result = f"📚 *Расписание для {class_name} на {day_ru}*\n\n"
     for lesson in lessons:
         time_part = lesson.time or '—'
-        result += f"🕐 *{time_part}* — {lesson.subject}\n"
+        room_part = f" · каб. {lesson.room}" if lesson.room and lesson.room != '-' else ''
+        result += f"🕐 *{time_part}* — {lesson.subject}{room_part}\n"
 
     return result

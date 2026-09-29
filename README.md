@@ -37,7 +37,7 @@ message/button handlers.
 **Keyboards** — build the button menus shown to users:
 | Function | Returns |
 |---|---|
-| `classes_keyboard()` | grid of all class buttons (1А, 1Б, ... 11) |
+| `classes_keyboard(classes)` | grid of class buttons built from the current schedule columns |
 | `days_keyboard()` | Сегодня / Завтра / days of the week / Неделя |
 | `menu_keyboard()` | main menu: Расписание / Сменить класс / Удалить класс |
 
@@ -91,7 +91,7 @@ between sessions.
 Downloads the schedule `.xlsx` from Yandex.Disk, reads both sheets, and
 merges them into one lookup-friendly structure.
 
-**`Lesson`** — small dataclass: `time`, `subject`.
+**`Lesson`** — small dataclass: `time`, `subject`, `room`.
 
 **`Schedule`** — the merged, ready-to-query schedule.
 Internally stored as `_data = {день: {класс: [Lesson, Lesson, ...]}}` —
@@ -101,6 +101,7 @@ that day, in order.
 | Method | Parameters | Does |
 |---|---|---|
 | `get_day(day, class_name)` | `day`: e.g. `"ПН"` or `"Понедельник"`, `class_name`: e.g. `"1А"` | normalizes both, returns that class's lesson list for that day (`[]` if none) |
+| `get_classes()` | — | returns classes that have time, lesson, and room columns in the workbook |
 | `from_sheets(df_base, df_changed)` *(classmethod)* | the two sheets as DataFrames | parses both, merges cell-by-cell (Измененное wins where filled, Основное fills the gaps), and returns a ready `Schedule` |
 
 **Module-level functions**
