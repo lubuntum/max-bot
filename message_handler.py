@@ -1,5 +1,4 @@
 import asyncio
-import re
 import datetime
 from maxapi import Dispatcher
 from maxapi.types import MessageCreated, MessageCallback, CallbackButton
@@ -13,27 +12,16 @@ from schedule import load_schedule, get_schedule_for_day
 # Создаем диспетчер для обработки сообщений
 dp = Dispatcher()
 
-CLASS_PATTERN = r'^([1-9][А-Я]|10|11)$'
-
-# Классы в порядке отображения на клавиатуре (по 4 кнопки в ряд)
-CLASSES = [
-    '1А', '1Б', '2А', '2Б',
-    '3А', '3Б', '4А', '4Б',
-    '5А', '5Б', '6А', '6Б',
-    '7А', '7Б', '8А', '8Б',
-    '9А', '9Б', '10', '11',
-]
-
 DAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
 
 
 # ---------- Клавиатуры (заменяют ручной ввод кнопками) ----------
 
-def classes_keyboard() -> InlineKeyboardBuilder:
+def classes_keyboard(classes) -> InlineKeyboardBuilder:
     """Клавиатура выбора класса вместо ввода текста."""
     kb = InlineKeyboardBuilder()
-    for i in range(0, len(CLASSES), 4):
-        row = [CallbackButton(text=c, payload=f'class:{c}') for c in CLASSES[i:i + 4]]
+    for i in range(0, len(classes), 4):
+        row = [CallbackButton(text=c, payload=f'class:{c}') for c in classes[i:i + 4]]
         kb.row(*row)
     return kb
 
@@ -88,6 +76,12 @@ async def get_cached_schedule():
     return await loop.run_in_executor(None, load_schedule, YANDEX_SHARE_URL, CACHE_TTL)
 
 
+async def get_available_classes() -> list:
+    """Классы берутся из текущего файла расписания."""
+    schedule = await get_cached_schedule()
+    return schedule.get_classes() if schedule else []
+
+
 async def build_schedule_text(day_code: str, user_class: str) -> str:
     """Текст расписания по коду дня ('today', 'tomorrow', 'week' или 'ПН'..'ВС')."""
     schedule = await get_cached_schedule()
@@ -122,9 +116,10 @@ async def cmd_start(event: MessageCreated):
             attachments=[menu_keyboard().as_markup()],
         )
     else:
+        classes = await get_available_classes()
         await event.message.answer(
             text="🎓 *Привет! Я бот-расписание для школы*\n\n📌 Выбери свой класс кнопкой ниже 👇",
-            attachments=[classes_keyboard().as_markup()],
+            attachments=[classes_keyboard(classes).as_markup()],
         )
 
 
@@ -136,9 +131,10 @@ async def cmd_myclass(event: MessageCreated):
     if user_class:
         await event.message.answer(text=menu_text(user_class), attachments=[menu_keyboard().as_markup()])
     else:
+        classes = await get_available_classes()
         await event.message.answer(
             text="❌ Ты ещё не выбрал класс. Выбери его кнопкой ниже 👇",
-            attachments=[classes_keyboard().as_markup()],
+            attachments=[classes_keyboard(classes).as_markup()],
         )
 
 
@@ -146,11 +142,12 @@ async def cmd_myclass(event: MessageCreated):
 async def cmd_changeclass(event: MessageCreated):
     """Оставлено для тех, кто печатает вручную: /changeclass 5А"""
     parts = event.message.body.text.split()
+    classes = await get_available_classes()
 
-    if len(parts) != 2 or not re.match(CLASS_PATTERN, parts[1].upper()):
+    if len(parts) != 2 or parts[1].upper() not in classes:
         await event.message.answer(
             text="📌 Выбери новый класс кнопкой ниже 👇",
-            attachments=[classes_keyboard().as_markup()],
+            attachments=[classes_keyboard(classes).as_markup()],
         )
         return
 
@@ -171,9 +168,10 @@ async def cmd_deleteclass(event: MessageCreated):
         return
 
     delete_user(event.from_user.user_id)
+    classes = await get_available_classes()
     await event.message.answer(
         text=f"🗑️ Класс *{user_class}* удалён.\n📌 Выбери новый класс 👇",
-        attachments=[classes_keyboard().as_markup()],
+        attachments=[classes_keyboard(classes).as_markup()],
     )
 
 
@@ -205,6 +203,14 @@ async def handle_callback(event: MessageCallback):
 
     if payload.startswith('class:'):
         new_class = payload.split(':', 1)[1]
+        classes = await get_available_classes()
+        if new_class not in classes:
+            await event.answer(
+                new_text="❌ Этого класса больше нет в расписании. Выбери класс ещё раз 👇",
+                attachments=[classes_keyboard(classes).as_markup()],
+            )
+            return
+
         first_name, last_name, username = get_user_info(event.callback.user)
         save_user(user_id, new_class, first_name, last_name, username)
 
@@ -217,7 +223,11 @@ async def handle_callback(event: MessageCallback):
     if payload == 'menu:schedule':
         user_class = get_user_class(user_id)
         if not user_class:
-            await event.answer(new_text="❌ Сначала выбери класс 👇", attachments=[classes_keyboard().as_markup()])
+            classes = await get_available_classes()
+            await event.answer(
+                new_text="❌ Сначала выбери класс 👇",
+                attachments=[classes_keyboard(classes).as_markup()],
+            )
             return
         await event.answer(
             new_text=f"📅 Расписание для *{user_class}*. Выбери день 👇",
@@ -226,21 +236,30 @@ async def handle_callback(event: MessageCallback):
         return
 
     if payload == 'menu:changeclass':
-        await event.answer(new_text="📌 Выбери новый класс 👇", attachments=[classes_keyboard().as_markup()])
+        classes = await get_available_classes()
+        await event.answer(
+            new_text="📌 Выбери новый класс 👇",
+            attachments=[classes_keyboard(classes).as_markup()],
+        )
         return
 
     if payload == 'menu:deleteclass':
         delete_user(user_id)
+        classes = await get_available_classes()
         await event.answer(
             new_text="🗑️ Класс удалён. Выбери новый класс 👇",
-            attachments=[classes_keyboard().as_markup()],
+            attachments=[classes_keyboard(classes).as_markup()],
         )
         return
 
     if payload == 'menu:back':
         user_class = get_user_class(user_id)
         if not user_class:
-            await event.answer(new_text="📌 Выбери свой класс 👇", attachments=[classes_keyboard().as_markup()])
+            classes = await get_available_classes()
+            await event.answer(
+                new_text="📌 Выбери свой класс 👇",
+                attachments=[classes_keyboard(classes).as_markup()],
+            )
             return
         await event.answer(new_text=menu_text(user_class), attachments=[menu_keyboard().as_markup()])
         return
@@ -248,7 +267,11 @@ async def handle_callback(event: MessageCallback):
     if payload.startswith('day:'):
         user_class = get_user_class(user_id)
         if not user_class:
-            await event.answer(new_text="❌ Сначала выбери класс 👇", attachments=[classes_keyboard().as_markup()])
+            classes = await get_available_classes()
+            await event.answer(
+                new_text="❌ Сначала выбери класс 👇",
+                attachments=[classes_keyboard(classes).as_markup()],
+            )
             return
 
         day_code = payload.split(':', 1)[1]
@@ -269,8 +292,9 @@ async def handle_text(event: MessageCreated):
     """Резервный обработчик: если ввели класс текстом — принимаем, иначе подсказываем кнопки."""
     user_text = event.message.body.text.strip()
     user_id = event.from_user.user_id
+    classes = await get_available_classes()
 
-    if re.match(CLASS_PATTERN, user_text.upper()):
+    if user_text.upper() in classes:
         class_name = user_text.upper()
         first_name, last_name, username = get_user_info(event.from_user)
         save_user(user_id, class_name, first_name, last_name, username)
@@ -282,7 +306,7 @@ async def handle_text(event: MessageCreated):
     if not user_class:
         await event.message.answer(
             text="❌ Сначала выбери класс кнопкой ниже 👇",
-            attachments=[classes_keyboard().as_markup()],
+            attachments=[classes_keyboard(classes).as_markup()],
         )
         return
 
