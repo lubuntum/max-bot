@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 from maxapi import Dispatcher
-from maxapi.types import MessageCreated, MessageCallback, CallbackButton
+from maxapi.types import BotStarted, MessageCreated, MessageCallback, CallbackButton
 from maxapi.filters.command import Command
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
 
@@ -13,6 +13,7 @@ from schedule import load_schedule, get_schedule_for_day
 dp = Dispatcher()
 
 DAYS_RU = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+START_MESSAGE = "Привет! Напишите мне что-нибудь для начала работы."
 
 
 # ---------- Клавиатуры (заменяют ручной ввод кнопками) ----------
@@ -104,6 +105,12 @@ async def build_schedule_text(day_code: str, user_class: str) -> str:
 
 
 # ---------- Команды ----------
+
+@dp.bot_started()
+async def handle_bot_started(event: BotStarted):
+    """Приветствует пользователя после нажатия кнопки «Начать» в MAX."""
+    await event.send(text=START_MESSAGE)
+
 
 @dp.message_created(Command("start"))
 async def cmd_start(event: MessageCreated):
