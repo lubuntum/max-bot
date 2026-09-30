@@ -25,6 +25,7 @@ bot.py        entry point — starts the bot and all handlers
 config.py     loads settings from .env
 database.py   stores which class each user picked (SQLite)
 schedule.py   downloads, merges, and serves the schedule
+request_counter.py  counts user requests and writes daily statistics
 ```
 
 ---
@@ -111,3 +112,22 @@ that day, in order.
 | `get_schedule_for_day(schedule, day_ru, class_name)` | a `Schedule` object, day, class | returns the formatted, ready-to-send schedule text |
 | `get_cache_status()` | — | `(is_cached, age_in_seconds)` — used by `/ping` |
 | `get_real_direct_url(public_url)` | Yandex.Disk share link | converts it into a real downloadable file URL |
+
+---
+
+## Request statistics
+
+User messages, button callbacks, and the first **Start** event are counted by a
+global middleware. Shortly after midnight, the completed day's total is added
+to `logs/<year>/<month>.csv`, for example:
+
+```csv
+date,requests
+2026-09-29,42
+2026-09-30,57
+```
+
+The in-progress count is kept in `logs/.request_counter_state.json`, so a bot
+restart does not reset it. `REQUEST_LOG_DIR` and `REQUEST_LOG_TIMEZONE` can be
+set in `.env`; their defaults are the project `logs` directory and
+`Asia/Krasnoyarsk`.

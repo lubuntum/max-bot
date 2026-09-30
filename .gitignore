@@ -69,3 +69,7 @@ htmlcov/
 *.log
 *.pid
 *.pid.lock
+
+# ========== Статистика обращений ==========
+logs/*
+!logs/.gitkeep

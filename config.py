@@ -19,6 +19,12 @@ CACHE_TTL = int(os.getenv("CACHE_TTL", 300))
 
 DB_PATH = Path(os.getenv("DB_PATH", "/app/data/users.db"))
 
+# Суточная статистика обращений к боту
+REQUEST_LOG_DIR = Path(
+    os.getenv("REQUEST_LOG_DIR", Path(__file__).parent / "logs")
+)
+REQUEST_LOG_TIMEZONE = os.getenv("REQUEST_LOG_TIMEZONE", "Asia/Krasnoyarsk")
+
 # Проверяем, что все переменные загружены
 if not MAX_TOKEN:
     raise ValueError("❌ MAX_TOKEN не найден в .env файле!")
